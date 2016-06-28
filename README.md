@@ -14,7 +14,7 @@ Possibility to split network into separate streams (that then join) is being wor
 
 # pretrain\_network
 
-Uses generative training similar to the one used in this paper: http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf
+Uses discriminative training similar to the one used in this paper: http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf
 
 Again use `help(pretrain_network)` for explanation on use.
 

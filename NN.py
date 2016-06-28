@@ -109,13 +109,25 @@ class Network:
 			self.output = tf.matmul(self.a_drop[-1], self.weights[-1]) + self.biases[-1]
 			self.softm_output = tf.nn.softmax(self.output)
 
-	def __init__(self, shape, pretrain=False, restore_p = None, is_softmax=True, split=False, beta1=0.9):
+	def __init__(self, shape, pretrain=False, restore_p = None, is_softmax=True, split=False):
 		'''
-		Creates graph and starts session.
+		Creates graph and starts session. Can load weights from a saved file created by the function `pretrain_network`.
 		Args:
 			shape: 		Shape of network. Expects list.
+
 			is_softmax: (boolean) Is last layer to be softmax.
 			 	default - True
+
+			pretrain: 	Load saved weights or not.
+				default - False
+
+			restore_p: 	File where saved weights are.
+				default - None
+
+			! Still being worked on:
+			split:		Divisor with which to split network by. Ex. for network [100,1000,1000,1000,500] -> (10,10,10,1,1)
+				default - False
+
 		'''
 
 		self.shape = np.asarray(shape)
@@ -156,7 +168,7 @@ class Network:
 			self.cost_f	= tf.reduce_sum(self.error) + self.lmbda*tf.div(self.param_sum, self.param_sum)
 
 		# Adam SGD.
-		self.train_adam = tf.train.AdamOptimizer(self.eta, beta1=beta1).minimize(self.cost_m)
+		self.train_adam = tf.train.AdamOptimizer(self.eta).minimize(self.cost_m)
 
 		self.saver = tf.train.Saver()
 
@@ -187,8 +199,6 @@ class Network:
 
 			in_v = [v for v in tf.all_variables() if v not in tf.trainable_variables()]
 			self.sess.run(tf.initialize_variables(in_v))
-
-			#subprocess.call("rm params", shell=True)
 
 		else:
 			self.sess = tf.Session()
@@ -445,7 +455,24 @@ class Network:
 		print("Session closed.")
 
 
-def pretrain_network(shape, feats, targs, f_sc, t_sc, batch_size, name):
+def pretrain_network(shape, feats, targs, f_sc, t_sc, epoch, batch_size, kp_prob, lam, name):
+	'''
+		Trains and saves a Network layer by layer. Training data is partially scored, as well as val data for each epoch.
+		Final layer is trained for only one epoch.
+
+	Args:
+		shape:			List of layer sizes. Example: [39,512,512,40]
+		feats:			Numpy array of feature vectors.
+		targs:			Numpy array of target indices (not one-hot vectors).
+		f_sc:			For val scoring.
+		t_sc:			For val scoring.
+		batch_size:		Size of mini-batch.
+		name:			Name of file to save the weights in.
+
+		Based on this: http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf
+		Although method not identical (optimal implementation not yet clear).
+	'''
+
 
 	input_layer = tf.placeholder("float", shape=[None, shape[0]])
 	targets = tf.placeholder("int64", shape=[None, ])
@@ -459,9 +486,9 @@ def pretrain_network(shape, feats, targs, f_sc, t_sc, batch_size, name):
 	cost = []
 	train_opt = []
 	acc = []
-	epochs = 3
-	lam = 0
-	kp_prob = 1
+	epochs = epoch
+	lam = lam
+	kp_prob = kp_prob
 	f_t, t_t = feats[:50000], targs[:50000]
 
 	sm_weights = ini_weight_var([shape[1], shape[-1]], name='wl')

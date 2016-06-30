@@ -4,6 +4,7 @@ import numpy as np
 import subprocess
 from datetime import datetime
 import re
+import h5py
 
 
 def ini_weight_var(shape, name=None):
@@ -14,6 +15,19 @@ def ini_weight_var(shape, name=None):
 def ini_bias_var(shape, name=None):
 	initial = tf.constant(0.01, shape=shape)
 	return tf.Variable(initial, name=name, trainable=True)
+
+
+def batch_gen(f, t, div_bs, num_iters, len_feat, div):
+	batch_idx = np.random.permutation(num_iters)*div_bs
+	for i in xrange(0, len(batch_idx)-div, div):
+		bf, bt = np.zeros((div, div_bs, len_feat)), np.zeros((div, div_bs,))
+		for j in xrange(div):
+			start = batch_idx[i+j]
+			end = start+div_bs
+			bf[j], bt[j] = f[start:end], t[start:end]
+		bf = np.concatenate(bf, axis=0)
+		bt = np.concatenate(bt, axis=0)
+		yield bf, bt
 
 
 class Network:
@@ -206,7 +220,7 @@ class Network:
 
 		print("Session running.")
 
-	def train(self,feats, targs, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_feats=None,
+	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_feats=None,
 			  			val_targs=None, eta_chk_pt=5, score_pt_d=0, log_score=False, partial_scoring = True, add_noise=False):
 		'''
 		Trains network. Minimizes the mean of cross-entropy for softmax outputs otherwise squared error.
@@ -247,10 +261,15 @@ class Network:
 
 		train_opt = self.train_adam
 
+		df = h5py.File(data_file,'r')
+		feats, targs = df['feats'], targs['targs']
+
 		if partial_scoring:
 			sc_f, sc_t = feats[:50000], targs[:50000]
+			len_feat = len(sc_f[0])
 		else:
 			sc_f, sc_t = feats, targs
+			len_feat = len(sc_f[0])
 
 		if score_pt_d == 0:
 			score_pt = int(epochs/10)
@@ -270,14 +289,13 @@ class Network:
 		if eta_policy=='adaptive':
 			last_cost = 1e20
 
+		div = 2
+		div_batch = int(batch_size/div)
+		num_iters = int(len(feats)/div_batch)
+
 		tt = datetime.now()
 		for epoch in xrange(epochs):
-			p = np.random.permutation(xrange(len(feats)))
-			feats, targs = feats[p], targs[p]
-
-			for start in xrange(0, len(feats), batch_size):
-				end = start + batch_size
-				batch_f, batch_t = feats[start:end], targs[start:end]
+			for batch_f, batch_t in batch_gen(feats, targs, div_batch, num_iters, len_feat, div):
 
 				self.sess.run(train_opt, feed_dict={self.input_layer: batch_f, self.targets: batch_t,
 														  self.eta: eta, self.kp_prob: kp_prob, self.lmbda: lmbda})
@@ -455,7 +473,7 @@ class Network:
 		print("Session closed.")
 
 
-def pretrain_network(shape, feats, targs, f_sc, t_sc, epoch, batch_size, kp_prob, lam, name):
+def pretrain_network(shape, data_file, f_sc, t_sc, epoch, batch_size, kp_prob, lam, name):
 	'''
 		Trains and saves a Network layer by layer. Training data is partially scored, as well as val data for each epoch.
 		Final layer is trained for only one epoch.
@@ -477,6 +495,7 @@ def pretrain_network(shape, feats, targs, f_sc, t_sc, epoch, batch_size, kp_prob
 	input_layer = tf.placeholder("float", shape=[None, shape[0]])
 	targets = tf.placeholder("int64", shape=[None, ])
 
+
 	pt_weights = []
 	pt_biases = []
 	pt_a = []
@@ -489,7 +508,11 @@ def pretrain_network(shape, feats, targs, f_sc, t_sc, epoch, batch_size, kp_prob
 	epochs = epoch
 	lam = lam
 	kp_prob = kp_prob
+
+	df = h5py.File(data_file, 'r')
+	feats, targs = df['feats'], df['targs']
 	f_t, t_t = feats[:50000], targs[:50000]
+	len_feat = len(f_t[0])
 
 	sm_weights = ini_weight_var([shape[1], shape[-1]], name='wl')
 	sm_bias = ini_bias_var([shape[-1]], name='bl')
@@ -523,17 +546,17 @@ def pretrain_network(shape, feats, targs, f_sc, t_sc, epoch, batch_size, kp_prob
 
 	save_op = tf.train.Saver(param_dict)
 
+	div = 2
+	div_batch = int(batch_size / div)
+	num_iters = int(len(feats) / div_batch)
+
 	with tf.Session() as sess:
 		sess.run(tf.initialize_all_variables())
 		for i in xrange(len(shape[1:-1])):
 			if i != len(shape[1:-1])-1:
 				for epoch in xrange(epochs):
 
-					p = np.random.permutation(xrange(len(feats)))
-					feats, targs = feats[p], targs[p]
-					for start in xrange(0, len(feats), batch_size):
-						end = start + batch_size
-						batch_f, batch_t = feats[start:end], targs[start:end]
+					for batch_f, batch_t in batch_gen(feats, targs, div_batch, num_iters, len_feat, div):
 
 						sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t})
 

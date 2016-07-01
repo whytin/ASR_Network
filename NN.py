@@ -33,7 +33,8 @@ def batch_gen(f, t, div_bs, num_iters, len_feat, div):
 class Network:
 	'''
 
-	This class uses Tensorflow to create a Neural Network. Trained networks can be saved and restored.
+	This class uses Tensorflow to create a Neural Network. Trained networks can be saved and restored. Assumes training data is in hdf5 file
+	for efficient memory usage.
 	(For kaldi) Can, given a file of utterance IDs with their feature vectors, output result into a file that kaldi can
 		process.
 
@@ -43,15 +44,15 @@ class Network:
 		Elu activation functions.
 		SGD-method is Adam.
 		Weight initialization uses tf.truncated_normal(stddev=0.1).
+		Softmax.
 	Variable:
 		Dropout.
 		Regularization (L2).
-		Softmax.
-		Constant learning rate or adaptive (/2 if cost function not decreased after (default) 3e3 epochs).
+		Constant learning rate or adaptive (/2 if cost function not decreased after (default) 5 epochs).
 
 
 	Ex:
-		NN = Network([50,100,10])	- 	Neural Network with input layer of 50, one hidden layer of 100, and output/softmax
+		NN = Network([50,100,10])	- 	Neural Network with input layer of 50, one hidden layer of 100, and softmax
 			layer of 10 neurons.
 
 
@@ -79,11 +80,10 @@ class Network:
 			# Output.
 			self.weights.append(ini_weight_var([self.shape[-2], self.shape[-1]], 'wl'))
 			self.biases.append(ini_bias_var([self.shape[-1]], 'bl'))
-			if self.is_softmax:
-				self.output = tf.matmul(self.a_drop[-1], self.weights[-1]) + self.biases[-1]
-				self.softm_output = tf.nn.softmax(self.output)
-			else:
-				self.output = tf.nn.elu(tf.matmul(self.a_drop[-1], self.weights[-1]) + self.biases[-1])
+
+			self.output = tf.matmul(self.a_drop[-1], self.weights[-1]) + self.biases[-1]
+			self.softm_output = tf.nn.softmax(self.output)
+
 		else:
 			switch = True
 			self.inp_layers = tf.split(1, split[0], self.input_layer)
@@ -123,14 +123,11 @@ class Network:
 			self.output = tf.matmul(self.a_drop[-1], self.weights[-1]) + self.biases[-1]
 			self.softm_output = tf.nn.softmax(self.output)
 
-	def __init__(self, shape, pretrain=False, restore_p = None, is_softmax=True, split=False):
+	def __init__(self, shape, pretrain=False, restore_p = None, split=False):
 		'''
 		Creates graph and starts session. Can load weights from a saved file created by the function `pretrain_network`.
 		Args:
 			shape: 		Shape of network. Expects list.
-
-			is_softmax: (boolean) Is last layer to be softmax.
-			 	default - True
 
 			pretrain: 	Load saved weights or not.
 				default - False
@@ -145,21 +142,18 @@ class Network:
 		'''
 
 		self.shape = np.asarray(shape)
-		self.is_softmax = is_softmax
 
 		# Input on 'train time'.
 		self.eta = tf.placeholder("float")
 		self.input_layer = tf.placeholder("float",shape=[None,self.shape[0]])
 		self.kp_prob = tf.placeholder("float")
 		self.lmbda = tf.placeholder("float")
-		if is_softmax:
-			self.targets = tf.placeholder("int64", shape=[None,])
-		else:
-			self.targets = tf.placeholder("float", shape=[None,self.shape[-1]])
+		self.targets = tf.placeholder("int64", shape=[None,])
+
 
 		self.init_layers(split)
 
-		# Regularization. For splitted network only joined layers taken into account.
+		# Regularization.
 		if not split:
 			self.param_sum = tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in self.weights]) #+ tf.add_n([tf.nn.l2_loss(b_v) for b_v in self.biases])
 			self.param_num = np.sum([f*s for f, s in zip(self.shape[:-1], self.shape[1:])]) #+ np.sum(self.shape[1:])
@@ -170,30 +164,17 @@ class Network:
 																for idx in xrange(jnd_idx, len(split)-1)])
 			self.param_num = np.sum([f*s for f, s in zip(self.shape[jnd_idx:-1], self.shape[jnd_idx:])]) + np.sum(self.shape[jnd_idx:])
 
-		# Cost function(s).
-		if self.is_softmax:
-			# Cross entropy function (1: Individual cross entropy error, 2: Total cross entropy with reg.).
-			self.error = tf.nn.sparse_softmax_cross_entropy_with_logits(self.output, self.targets)
-			self.cost_f = tf.reduce_sum(self.error) + self.lmbda*tf.div(self.param_sum, self.param_num)
-			self.cost_m = tf.reduce_mean(self.error) + self.lmbda*tf.div(self.param_sum, self.param_num)
-		else:
-			# Least squares function.
-			self.error = tf.div(tf.reduce_sum(tf.square(self.output - self.targets),1), 2.0*self.shape[-1])
-			self.cost_f	= tf.reduce_sum(self.error) + self.lmbda*tf.div(self.param_sum, self.param_sum)
+		# Cross entropy function (1: Individual cross entropy error, 2: Total cross entropy with reg.).
+		self.error = tf.nn.sparse_softmax_cross_entropy_with_logits(self.output, self.targets)
+		self.cost_f = tf.reduce_sum(self.error) + self.lmbda*tf.div(self.param_sum, self.param_num)
+		self.cost_m = tf.reduce_mean(self.error) + self.lmbda*tf.div(self.param_sum, self.param_num)
 
 		# Adam SGD.
 		self.train_adam = tf.train.AdamOptimizer(self.eta).minimize(self.cost_m)
 
 		self.saver = tf.train.Saver()
 
-		if self.is_softmax:
-			self.get_acc = tf.reduce_mean(tf.cast(tf.equal( tf.argmax(self.softm_output, 1), self.targets ) ,"float"))
-		else:
-			self.get_acc = None
-
-		self.add_noise = []
-		for i in xrange(len(self.weights)):
-			self.add_noise.append(self.weights[i].assign_add(0.01*self.weights[i]))
+		self.get_acc = tf.reduce_mean(tf.cast(tf.equal( tf.argmax(self.softm_output, 1), self.targets ) ,"float"))
 
 		if pretrain:
 			params_dict = {}
@@ -204,7 +185,6 @@ class Network:
 				else:
 					params_dict['w'+str(i)] = self.weights[i]
 					params_dict['b'+str(i)] = self.biases[i]
-
 
 			get_pt = tf.train.Saver(params_dict)
 			self.sess = tf.Session()
@@ -221,12 +201,11 @@ class Network:
 		print("Session running.")
 
 	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_feats=None,
-			  			val_targs=None, eta_chk_pt=5, score_pt_d=0, log_score=False, partial_scoring = True, add_noise=False):
+			  			val_targs=None, eta_chk_pt=5, score_pt_d=0, log_score=False, partial_scoring = True):
 		'''
 		Trains network. Minimizes the mean of cross-entropy for softmax outputs otherwise squared error.
 		Args:
-			feats: 			Ndarray of n feature vectors with dimension of input (first) layer -> (n,self.shape[0])
-			targs:			Ndarray of n target classes (one-hot vectors unnecessary) -> (n,)
+			data_file: 	 	hdf5 file containing feature and target datasets. Features must be in dataset 'feats', targets in dataset 'targs'.
 			epochs:			Number of iterations that SGD should perform.
 			batch_size:		Number of (feat,targ) pairs to use per SGD iteration.
 			eta:			Learning rate.
@@ -262,7 +241,7 @@ class Network:
 		train_opt = self.train_adam
 
 		df = h5py.File(data_file,'r')
-		feats, targs = df['feats'], targs['targs']
+		feats, targs = df['feats'], df['targs']
 
 		if partial_scoring:
 			sc_f, sc_t = feats[:50000], targs[:50000]
@@ -327,10 +306,6 @@ class Network:
 				if epochs-3<=epoch:
 					logged_scores.append(self.score(val_feats, val_targs))
 
-			if add_noise and 3<epoch<20:
-				for assign_op in self.add_noise:
-					self.sess.run(assign_op)
-
 
 		print("Training duration: {0}".format(datetime.now()-tt))
 
@@ -363,14 +338,10 @@ class Network:
 		'''
 		Input: Feature vectors. Returns outputs.
 		'''
-		if self.is_softmax:
-			if apply_log==True:
-				return np.log(self.sess.run(self.softm_output,feed_dict = {self.input_layer:inp, self.kp_prob:1})+1e-15)
-			else:
-				return self.sess.run(self.softm_output,feed_dict = {self.input_layer:inp, self.kp_prob:1})
+		if apply_log is True:
+			return np.log(self.sess.run(self.softm_output,feed_dict = {self.input_layer:inp, self.kp_prob:1})+1e-15)
 		else:
-			return self.sess.run(self.output, feed_dict={self.input_layer: inp, self.kp_prob: 1})
-
+			return self.sess.run(self.softm_output,feed_dict = {self.input_layer:inp, self.kp_prob:1})
 
 	def output_for_kaldi(self, feats_file, SNR=None, splicing=0):
 		'''
@@ -395,7 +366,7 @@ class Network:
 
 		'''
 
-		if SNR==None:
+		if SNR == None:
 			dt_file = feats_file
 		else:
 			subprocess.call("sed -n '/.*"+SNR+".*/,/]$/p' " + feats_file+">temp.txt",shell=True)
@@ -410,7 +381,7 @@ class Network:
 
 				else:
 					data[last].append([float(s) for s in line[:-2].strip().split()])
-		if SNR!=None:
+		if SNR != None:
 			subprocess.call("rm temp.txt",shell=True)
 		len_feat = len(data[last][0])
 		print(len_feat)
@@ -418,7 +389,7 @@ class Network:
 		with open('network_output.txt','w+') as ofile:
 			if splicing!=0:
 				zeropad = np.zeros((splicing,len_feat))
-				for k,v in data.items():
+				for k, v in data.items():
 					utt_feats = np.concatenate(( np.concatenate((zeropad, np.asarray(v))), zeropad))
 					utt_len = len(utt_feats)
 					f_mat = np.zeros((utt_len-2*splicing, len_feat*(2*splicing+1)), dtype = np.float32)
@@ -437,14 +408,14 @@ class Network:
 						ofile.write('{0}\n'.format(' '.join(str(c) for c in out)))
 					ofile.write('{0}  ]\n'.format(' '.join(str(c) for c  in outs[-1])))
 			else:
-				for k,v in data.items():
+				for k, v in data.items():
 					ofile.write('{0}  [\n'.format(k))
 					f = np.asarray(v)
 					f = np.divide(np.subtract(f.transpose(), np.mean(f, axis=1)), np.std(f, axis=1)).transpose()
 					outs = self.forward_pass(f, apply_log=True)
 					for out in outs[:-1]:
 						ofile.write('{0}\n'.format(' '.join(str(c) for c in out)))
-					ofile.write('{0}  ]\n'.format(' '.join(str(c) for c  in outs[-1])))
+					ofile.write('{0}  ]\n'.format(' '.join(str(c) for c in outs[-1])))
 
 
 	def save(self, name='NN_model', kp_prob=1, lam=0, score=None, log_scores=None, Epochs='N/A', load='None'):
@@ -480,8 +451,7 @@ def pretrain_network(shape, data_file, f_sc, t_sc, epoch, batch_size, kp_prob, l
 
 	Args:
 		shape:			List of layer sizes. Example: [39,512,512,40]
-		feats:			Numpy array of feature vectors.
-		targs:			Numpy array of target indices (not one-hot vectors).
+		data_file: 	 	hdf5 file containing feature and target datasets. Features must be in dataset 'feats', targets in dataset 'targs'.
 		f_sc:			For val scoring.
 		t_sc:			For val scoring.
 		batch_size:		Size of mini-batch.

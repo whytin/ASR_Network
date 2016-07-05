@@ -201,7 +201,7 @@ class Network:
 		print("Session running.")
 
 	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_feats=None,
-			  			val_targs=None, eta_chk_pt=5, score_pt_d=0, log_score=False, partial_scoring = True):
+			  			val_targs=None, eta_chk_pt=3, score_pt_d=0, log_score=False, partial_scoring = True):
 		'''
 		Trains network. Minimizes the mean of cross-entropy for softmax outputs otherwise squared error.
 		Args:
@@ -225,7 +225,7 @@ class Network:
 				default - None
 
 			eta_chk_pt:		Number of epochs at which to check cost to decrease or keep constant the learning rate.
-				default - 5
+				default - 3
 
 			score_pt_d: 	Number of times to display accuracy/error.
 				default - 10
@@ -268,6 +268,10 @@ class Network:
 		if eta_policy=='adaptive':
 			last_cost = 1e20
 
+		if eta_policy == 'ES':
+			epochs = 100
+			original_eta = eta
+
 		div = 2
 		div_batch = int(batch_size/div)
 		num_iters = int(len(feats)/div_batch)
@@ -299,13 +303,29 @@ class Network:
 					else:
 						print("Training score {0}".format(self.score(sc_f, sc_t)))
 
+			elif eta_policy == 'ES':
+				if epoch % eta_chk_pt == 0:
+					new_cost = self.cost_mean(feats, targs)
+					print("Training error {0}".format(new_cost))
+					if new_cost > last_cost:
+						eta /= 2
+					last_cost = new_cost
+
+				if val_data:
+					print("Training score {0}, Val score {1}".format(self.score(sc_f, sc_t),
+																	 self.score(val_feats, val_targs)))
+				else:
+					print("Training score {0}".format(self.score(sc_f, sc_t)))
+				if eta == original_eta/8:
+					break
+
 			else:
 				print("No output: `eta_policy` must equal to 'const' or 'adaptive'.")
 
 			if log_score:
 				if epochs-3<=epoch:
 					logged_scores.append(self.score(val_feats, val_targs))
-
+		df.close()
 
 		print("Training duration: {0}".format(datetime.now()-tt))
 
@@ -343,6 +363,22 @@ class Network:
 		else:
 			return self.sess.run(self.softm_output,feed_dict = {self.input_layer:inp, self.kp_prob:1})
 
+	def feats_extractor(self, feats_file):
+		pattern = re.compile('[a-zA-Z]')
+		key, mat = '', []
+		started = False
+		with open(feats_file) as f:
+			for line in f:
+				if bool(pattern.search(line[:10])):
+					if started:
+						yield key, mat
+						mat = []
+					key = line[:-2].strip()
+					started = True
+				else:
+					mat.append([float(s) for s in line[:-2].strip().split()])
+
+
 	def output_for_kaldi(self, feats_file, SNR=None, splicing=0):
 		'''
 		Takes a txt file of the form
@@ -369,46 +405,38 @@ class Network:
 		if SNR == None:
 			dt_file = feats_file
 		else:
-			subprocess.call("sed -n '/.*"+SNR+".*/,/]$/p' " + feats_file+">temp.txt",shell=True)
+			subprocess.call("sed -n '/.*" + SNR + ".*/,/]$/p' " + feats_file + ">temp.txt", shell=True)
 			dt_file = "temp.txt"
-		data = {}
-		pattern = re.compile('[a-zA-Z]')
-		with open(dt_file) as f:
-			for line in f:
-				if bool(pattern.search(line[:10])):
-					last = line[:-2].strip()
-					data[last] = []
 
-				else:
-					data[last].append([float(s) for s in line[:-2].strip().split()])
 		if SNR != None:
-			subprocess.call("rm temp.txt",shell=True)
-		len_feat = len(data[last][0])
+			subprocess.call("rm temp.txt", shell=True)
+		len_feat = 40
 		print(len_feat)
 
-		with open('network_output.txt','w+') as ofile:
-			if splicing!=0:
-				zeropad = np.zeros((splicing,len_feat))
-				for k, v in data.items():
-					utt_feats = np.concatenate(( np.concatenate((zeropad, np.asarray(v))), zeropad))
+		with open('network_output.txt', 'w+') as ofile:
+			if splicing != 0:
+				zeropad = np.zeros((splicing, len_feat))
+				for k, v in self.feats_extractor(dt_file):
+					utt_feats = np.concatenate((np.concatenate((zeropad, np.asarray(v))), zeropad))
 					utt_len = len(utt_feats)
-					f_mat = np.zeros((utt_len-2*splicing, len_feat*(2*splicing+1)), dtype = np.float32)
+					f_mat = np.zeros((utt_len - 2 * splicing, len_feat * (2 * splicing + 1)), dtype=np.float32)
 
-					for i in xrange(splicing, utt_len-splicing):
-						if i<utt_len-splicing-1:
-							f_mat[i-splicing] = utt_feats[i-splicing:i+splicing+1].flatten()
+					for i in xrange(splicing, utt_len - splicing):
+						if i < utt_len - splicing - 1:
+							f_mat[i - splicing] = utt_feats[i - splicing:i + splicing + 1].flatten()
 						else:
-							f_mat[i-splicing] = utt_feats[i-splicing:].flatten()
+							f_mat[i - splicing] = utt_feats[i - splicing:].flatten()
 
 					# Transpose to fit trailing dimensions for broadcasting (normalizing).
-					f_mat = np.divide(np.subtract(f_mat.transpose(), np.mean(f_mat, axis=1)), np.std(f_mat, axis=1)).transpose()
+					f_mat = np.divide(np.subtract(f_mat.transpose(), np.mean(f_mat, axis=1)),
+									  np.std(f_mat, axis=1)).transpose()
 					ofile.write('{0}  [\n'.format(k))
 					outs = self.forward_pass(f_mat, apply_log=True)
 					for out in outs[:-1]:
 						ofile.write('{0}\n'.format(' '.join(str(c) for c in out)))
-					ofile.write('{0}  ]\n'.format(' '.join(str(c) for c  in outs[-1])))
+					ofile.write('{0}  ]\n'.format(' '.join(str(c) for c in outs[-1])))
 			else:
-				for k, v in data.items():
+				for k, v in self.feats_extractor(dt_file):
 					ofile.write('{0}  [\n'.format(k))
 					f = np.asarray(v)
 					f = np.divide(np.subtract(f.transpose(), np.mean(f, axis=1)), np.std(f, axis=1)).transpose()

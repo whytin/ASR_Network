@@ -470,7 +470,7 @@ class Network:
 		print("Session closed.")
 
 
-def pretrain_network(shape, data_file, epochs, batch_size, val_file='None', kp_prob=1, lam=0, name='params'):
+def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None', kp_prob=1, lam=0, name='params'):
 	'''
 		Trains and saves a Network layer by layer. Training data is partially scored, as well as val data for each epoch.
 		Final layer is trained for only one epoch.
@@ -486,10 +486,8 @@ def pretrain_network(shape, data_file, epochs, batch_size, val_file='None', kp_p
 		Although method not identical (optimal implementation not yet clear).
 	'''
 
-
 	input_layer = tf.placeholder("float", shape=[None, shape[0]])
 	targets = tf.placeholder("int64", shape=[None, ])
-
 
 	pt_weights = []
 	pt_biases = []
@@ -539,8 +537,8 @@ def pretrain_network(shape, data_file, epochs, batch_size, val_file='None', kp_p
 	param_dict = {}
 	for i in xrange(len(pt_weights)+1):
 		if i == len(pt_weights):
-			param_dict['wl'] = sm_weights
-			param_dict['bl'] = sm_bias
+			param_dict['wl'] = sm_weights[-1]
+			param_dict['bl'] = sm_bias[-1]
 		else:
 			param_dict['w'+str(i)] = pt_weights[i]
 			param_dict['b'+str(i)] = pt_biases[i]
@@ -560,8 +558,8 @@ def pretrain_network(shape, data_file, epochs, batch_size, val_file='None', kp_p
 
 					sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t})
 
-			print("train {0}, val {1}".format(sess.run(acc[epoch], feed_dict={input_layer: f_t, targets: t_t}),
-											  sess.run(acc[epoch], feed_dict={input_layer: f_sc, targets: t_sc})))
+			print("train {0}, val {1}".format(sess.run(acc[-1], feed_dict={input_layer: f_t, targets: t_t}),
+											  sess.run(acc[-1], feed_dict={input_layer: f_sc, targets: t_sc})))
 		print
 
 

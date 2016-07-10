@@ -12,7 +12,7 @@ Contains class `Network` and function `pretrain_network`.
          data_train_file = '...'
          data_val_file = '...'
 
-	 shape = [440, 1024, 1024, 1024, 1024, 1024, 2000]
+	 shape = [440, 1024, 1024, 1024, 1024, 1024, 1024, 2000]
 	 
 	 
 	 with tf.Graph().as_default():
@@ -31,7 +31,6 @@ Contains class `Network` and function `pretrain_network`.
 	 	NN.save('trained_model')
 	 	
 	 	NN.stop()
-
 
 # Network
 
@@ -55,12 +54,7 @@ If `pretrain_network` is used before separate using `tf.Graph().as_default()`.
 
 # pretrain_network
 
-Uses discriminative training similar to the one used in this paper: http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf
+The DBN paper intimidated me so I thought maybe I could try pretrain a network using other methods, such as used in [1](http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf) or [2](https://papers.nips.cc/paper/3048-greedy-layer-wise-training-of-deep-networks.pdf)
 
-Methods used here are also being tested: https://papers.nips.cc/paper/3048-greedy-layer-wise-training-of-deep-networks.pdf
-
-Will be updated to use the better one depending on results.
-
-Again use `help(pretrain_network)` for explanation on use.
-
+Results so far have been disappointing. Using a kaldi network of the same size and DBN pretraining achieves an 11-12% WER, I'm still trying to get past 16. I believe the underlying problem is I've got 10 hours of training data (aurora4), the linked papers have an order of magnitude more; per [3](http://research.google.com/pubs/pub38131.html) the more data you have the less pretraining matters.
 

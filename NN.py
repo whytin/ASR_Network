@@ -8,12 +8,12 @@ import h5py
 
 
 def ini_weight_var(shape, name=None):
-	initial=tf.truncated_normal(shape, stddev=0.1)
+	initial=tf.truncated_normal(shape, stddev=1/(1.41*shape[0]))
 	return tf.Variable(initial, name=name, trainable=True)
 
 
 def ini_bias_var(shape, name=None):
-	initial = tf.constant(0.01, shape=shape)
+	initial = tf.constant(0, shape=shape)
 	return tf.Variable(initial, name=name, trainable=True)
 
 
@@ -448,12 +448,10 @@ class Network:
 
 	def save(self, name='NN_model', kp_prob=1, lam=0, score=None, log_scores=None, Epochs='N/A', load='None'):
 		'''
-		Saves the model (weights (vector of matrices) and bias (matrix)) to 'NN_model.ckpt'.
+		Saves the model (weights (vector of matrices) and bias (matrix)) to 'NN_model.ckpt' or input string.
 		'''
 		with open('Network_saves.txt','a') as f:
-			if not score:
-				f.write("Shape: {0}\tFile:{1}\n".format(self.shape, name))
-			else:
+			if score:
 				f.write("Shape: {0}\tFile: {1}\t 1-Dropout: {2}\t\tScores: {7} {3}\t Lambda: {4}\t Epochs: {5}\t Loaded from: {6}\n".format(self.shape, name, kp_prob, score, lam, Epochs, load, log_scores))
 
 		save_path = self.saver.save(self.sess,"trained_networks/"+name+".ckpt")
@@ -472,7 +470,7 @@ class Network:
 		print("Session closed.")
 
 
-def pretrain_network(shape, data_file, f_sc, t_sc, epoch, batch_size, kp_prob, lam, name):
+def pretrain_network(shape, data_file, epochs, batch_size, val_file='None', kp_prob=1, lam=0, name='params'):
 	'''
 		Trains and saves a Network layer by layer. Training data is partially scored, as well as val data for each epoch.
 		Final layer is trained for only one epoch.
@@ -480,8 +478,7 @@ def pretrain_network(shape, data_file, f_sc, t_sc, epoch, batch_size, kp_prob, l
 	Args:
 		shape:			List of layer sizes. Example: [39,512,512,40]
 		data_file: 	 	hdf5 file containing feature and target datasets. Features must be in dataset 'feats', targets in dataset 'targs'.
-		f_sc:			For val scoring.
-		t_sc:			For val scoring.
+		val_file: 		hdf5 file containing feature and target datasets. Features must be in dataset 'feats', targets in dataset 'targs'.
 		batch_size:		Size of mini-batch.
 		name:			Name of file to save the weights in.
 
@@ -503,17 +500,17 @@ def pretrain_network(shape, data_file, f_sc, t_sc, epoch, batch_size, kp_prob, l
 	cost = []
 	train_opt = []
 	acc = []
-	epochs = epoch
-	lam = lam
-	kp_prob = kp_prob
 
 	df = h5py.File(data_file, 'r')
 	feats, targs = df['feats'], df['targs']
 	f_t, t_t = feats[:50000], targs[:50000]
+	if val_file != 'None':
+		vf = h5py.File(val_file, 'r')
+		f_sc, t_sc = vf['feats'][:50000], vf['targs'][:50000]
 	len_feat = len(f_t[0])
 
-	sm_weights = ini_weight_var([shape[1], shape[-1]], name='wl')
-	sm_bias = ini_bias_var([shape[-1]], name='bl')
+	sm_weights = []
+	sm_bias = []
 
 	for i, len_layer in enumerate(shape[1:-1]):
 		pt_weights.append(ini_weight_var([shape[i], len_layer], 'w' + str(i)))
@@ -525,13 +522,19 @@ def pretrain_network(shape, data_file, f_sc, t_sc, epoch, batch_size, kp_prob, l
 			pt_a.append(tf.nn.elu(tf.matmul(pt_a_drop[i - 1], pt_weights[i]) + pt_biases[i]))
 			pt_a_drop.append(tf.nn.dropout(pt_a[i], kp_prob))
 
-		sm_out.append(tf.matmul(pt_a_drop[i], sm_weights) + sm_bias)  # Tensorflow takes care of softmax
+		if len_layer == shape[-2]:
+			sm_weights.append(ini_weight_var([len_layer, shape[-1]], name='wl'))
+			sm_bias.append(ini_bias_var([shape[-1]], name='bl'))
+		else:
+			sm_weights.append(ini_weight_var([len_layer, shape[-1]]))
+			sm_bias.append(ini_bias_var([shape[-1]]))
+		sm_out.append(tf.matmul(pt_a_drop[i], sm_weights[i]) + sm_bias[i])  # Tensorflow takes care of softmax
 		sm_out_calc.append(tf.nn.softmax(sm_out[i]))
 		acc.append(tf.reduce_mean(tf.cast(tf.equal(tf.argmax(sm_out_calc[i], 1), targets), "float")))
 		wght_num = np.sum([f*s for f, s in zip(shape[:i+1], shape[1:i+2])])
 		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
 					lam*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
-		train_opt.append(tf.train.AdamOptimizer(1e-4).minimize(cost[i]))
+		train_opt.append(tf.train.AdamOptimizer(eta).minimize(cost[i]))
 
 	param_dict = {}
 	for i in xrange(len(pt_weights)+1):
@@ -550,24 +553,21 @@ def pretrain_network(shape, data_file, f_sc, t_sc, epoch, batch_size, kp_prob, l
 
 	with tf.Session() as sess:
 		sess.run(tf.initialize_all_variables())
-		for i in xrange(len(shape[1:-1])):
-			if i != len(shape[1:-1])-1:
-				for epoch in xrange(epochs):
 
-					for batch_f, batch_t in batch_gen(feats, targs, div_batch, num_iters, len_feat, div):
-
-						sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t})
-
-					print("train {0}, val {1}".format(sess.run(acc[i], feed_dict={input_layer: f_t, targets: t_t}),
-													  sess.run(acc[i], feed_dict={input_layer: f_sc, targets: t_sc})))
-				print
-			else:
-				p = np.random.permutation(xrange(len(feats)))
-				feats, targs = feats[p], targs[p]
-				for start in xrange(0, len(feats), batch_size):
-					end = start + batch_size
-					batch_f, batch_t = feats[start:end], targs[start:end]
+		for epoch in xrange(epochs):
+			for i in xrange(len(shape[1:-1])):
+				for batch_f, batch_t in batch_gen(feats, targs, div_batch, num_iters, len_feat, div):
 
 					sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t})
 
+			print("train {0}, val {1}".format(sess.run(acc[epoch], feed_dict={input_layer: f_t, targets: t_t}),
+											  sess.run(acc[epoch], feed_dict={input_layer: f_sc, targets: t_sc})))
+		print
+
+
+
 		save_op.save(sess, name)
+
+	df.close()
+	if val_file!='None':
+		vf.close()

@@ -200,8 +200,8 @@ class Network:
 
 		print("Session running.")
 
-	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_feats=None,
-			  			val_targs=None, eta_chk_pt=3, score_pt_d=0, log_score=False, partial_scoring = True):
+	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_file='None', val_feats=None,
+			  			val_targs=None, eta_chk_pt=3, score_pt_d=0, partial_scoring = True):
 		'''
 		Trains network. Minimizes the mean of cross-entropy for softmax outputs otherwise squared error.
 		Args:
@@ -220,9 +220,8 @@ class Network:
 			lmbda:			Regularization multiplier.
 				default - 0
 
-			val_feats:		Validation features.
-			val_targs:		Validation targets.
-				default - None
+			val_file: 	 	hdf5 file containing feature and target datasets. Features must be in dataset 'feats', targets in dataset 'targs'.
+				default - 'None'
 
 			eta_chk_pt:		Number of epochs at which to check cost to decrease or keep constant the learning rate.
 				default - 3
@@ -255,10 +254,12 @@ class Network:
 		else:
 			score_pt = int(epochs/score_pt_d)
 
-		if type(val_feats).__module__ == np.__name__:
-			val_data = True
-		else:
+		if val_file == 'None':
 			val_data = False
+		else:
+			val_data = True
+			val_d = h5py.File(val_file, 'r')
+			val_feats, val_targs = val_d['feats'][:50000], val_d['targs'][:50000]
 
 		if log_score:
 			logged_scores = []
@@ -322,10 +323,9 @@ class Network:
 			else:
 				print("No output: `eta_policy` must equal to 'const' or 'adaptive'.")
 
-			if log_score:
-				if epochs-3<=epoch:
-					logged_scores.append(self.score(val_feats, val_targs))
 		df.close()
+		if val_data:
+			val_d.close()
 
 		print("Training duration: {0}".format(datetime.now()-tt))
 

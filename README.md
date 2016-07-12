@@ -1,10 +1,11 @@
-For training networks for ASR.
+For training networks for ASR. Contains a `Network` class that's an OO implementation of tensorflow. Example program below.
 
 # Network
 
 This class uses Tensorflow to create a Neural Network. Trained networks can be saved and restored.
+Assumes training data is in hdf5 file for efficient memory usage.
 (For kaldi) Can, given a file of utterance IDs with their feature vectors, output result into a file that kaldi can
-	process (specifically `latgen-faster-mapped` from nnet1). Assumes training data is in hdf5 file for efficient memory usage.
+	process (specifically `latgen-faster-mapped` from nnet1). 
 
 Inside python use `help(Network)` to bring up the help text showing available functions. Summary of implementation:
 
@@ -48,7 +49,7 @@ Results so far have been disappointing. Using a kaldi network of the same size a
 
 # hdf5 data format
 
-This only works with the data formatted correctly. The advantage is very low RAM usage.
+Training only works with the data formatted correctly. The advantage is very low RAM usage.
 It's not hard to do, but to make it as simple as possible here's an example. It is assumed that the features and targets are numpy arrays in `f` and `t`.
 
 	import h5py

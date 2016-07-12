@@ -136,7 +136,8 @@ class Network:
 										'batch_size', 'eta', 'kp_prob', 'save_file'}
 									'save_file' - File to save pretrained paramaters that will
 										be loaded in.
-									If other keys unclear read the docs of the `train` function.
+									If other keys unclear read the docs of the `pretrain_network`
+									or `train` function.
 
 				default - None
 

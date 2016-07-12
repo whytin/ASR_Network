@@ -8,7 +8,7 @@ import h5py
 
 
 def ini_weight_var(shape, name=None):
-	initial=tf.truncated_normal(shape, stddev=0.0001)
+	initial=tf.truncated_normal(shape, stddev=1/(1.41*shape[0]))
 	return tf.Variable(initial, name=name, trainable=True)
 
 
@@ -456,13 +456,14 @@ class Network:
 					ofile.write('{0}  ]\n'.format(' '.join(str(c) for c in outs[-1])))
 
 
-	def save(self, name='NN_model', kp_prob=1, lam=0, score=None, log_scores=None, Epochs='N/A', load='None'):
+	def save(self, name='NN_model', kp_prob=1, lam=0, score1=None, score2=None, Epochs='N/A', load='None'):
 		'''
 		Saves the model (weights (vector of matrices) and bias (matrix)) to 'NN_model.ckpt' or input string.
 		'''
 		with open('Network_saves.txt','a') as f:
-			if score:
-				f.write("Shape: {0}\tFile: {1}\t 1-Dropout: {2}\t\tScores: {7} {3}\t Lambda: {4}\t Epochs: {5}\t Loaded from: {6}\n".format(self.shape, name, kp_prob, score, lam, Epochs, load, log_scores))
+			if score1:
+				f.write("File: {:25s}Scores: {!s:10s} {!s:10s} kp_prob: {!s:5s} Lambda: {!s:5s} Epochs: {!s:6s} Loaded from: {:15s}Notes: {}\n".format(
+						name, score1, score2, kp_prob, lam, Epochs, load, notes))
 
 		save_path = self.saver.save(self.sess, "trained_networks/"+name+".ckpt")
 		print("Model saved as: %s"%save_path)

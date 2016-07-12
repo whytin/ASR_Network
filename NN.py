@@ -154,7 +154,7 @@ class Network:
 				pretrain_network(shape, pretrain_params_dict['data_train'], pretrain_params_dict['epochs'],
 				  pretrain_params_dict['batch_size'], pretrain_params_dict['eta'],
 				  pretrain_params_dict['data_val'], pretrain_params_dict['kp_prob'],
-				  pretrain_params_dict['save_file'], pretrain_params_dict['lam'],
+				  pretrain_params_dict['lam'], pretrain_params_dict['save_file'],
 								 fraction_of_gpu=fraction_of_gpu)
 
 		self.shape = np.asarray(shape)

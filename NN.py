@@ -8,12 +8,12 @@ import h5py
 
 
 def ini_weight_var(shape, name=None):
-	initial=tf.truncated_normal(shape, stddev=1/(1.41*shape[0]))
+	initial=tf.truncated_normal(shape, stddev=0.0001)
 	return tf.Variable(initial, name=name, trainable=True)
 
 
 def ini_bias_var(shape, name=None):
-	initial = tf.constant(0, shape=shape)
+	initial = tf.constant(0.0, shape=shape)
 	return tf.Variable(initial, name=name, trainable=True)
 
 
@@ -123,23 +123,37 @@ class Network:
 			self.output = tf.matmul(self.a_drop[-1], self.weights[-1]) + self.biases[-1]
 			self.softm_output = tf.nn.softmax(self.output)
 
-	def __init__(self, shape, pretrain=False, restore_p = None, split=False):
+	def __init__(self, shape, pretrain=False, split=False, pretrain_params_dict=None, use_fraction_gpu=1):
 		'''
 		Creates graph and starts session. Can load weights from a saved file created by the function `pretrain_network`.
 		Args:
-			shape: 		Shape of network. Expects list.
+			shape: 					Shape of network. Expects list.
 
-			pretrain: 	Load saved weights or not.
+			pretrain: 				Load saved weights or not.
 				default - False
 
-			restore_p: 	File where saved weights are.
+			pretrain_params_dict: 	Dictionary containing: {'data_train', 'data_val', 'epochs',
+										'batch_size', 'eta', 'kp_prob', 'save_file'}
+									'save_file' - File to save pretrained paramaters that will
+										be loaded in.
+									If other keys unclear read the docs of the `train` function.
+
 				default - None
 
 			! Still being worked on:
-			split:		Divisor with which to split network by. Ex. for network [100,1000,1000,1000,500] -> (10,10,10,1,1)
+			split:					Divisor with which to split network by. Ex. for network [100,1000,1000,1000,500] -> (10,10,10,1,1)
 				default - False
 
+			use_fraction_gpu: 		Use a fraction of instead of all the available GPU memory.
+				default - 1
+
 		'''
+
+		if pretrain:
+			with tf.Graph().as_default():
+				pretrain_network(shape, pretrain_params_dict['data_train'], pretrain_params_dict['epochs'],
+					 pretrain_params_dict['batch_size'], pretrain_params_dict['eta'],
+					 pretrain_params_dict['data_val'], pretrain_params_dict['kp_prob'], pretrain_params_dict['save_file'])
 
 		self.shape = np.asarray(shape)
 
@@ -149,7 +163,6 @@ class Network:
 		self.kp_prob = tf.placeholder("float")
 		self.lmbda = tf.placeholder("float")
 		self.targets = tf.placeholder("int64", shape=[None,])
-
 
 		self.init_layers(split)
 
@@ -176,7 +189,10 @@ class Network:
 
 		self.get_acc = tf.reduce_mean(tf.cast(tf.equal( tf.argmax(self.softm_output, 1), self.targets ) ,"float"))
 
+		gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=use_fraction_gpu)
+
 		if pretrain:
+
 			params_dict = {}
 			for i in xrange(len(self.weights)):
 				if i == len(self.weights)-1:
@@ -187,21 +203,21 @@ class Network:
 					params_dict['b'+str(i)] = self.biases[i]
 
 			get_pt = tf.train.Saver(params_dict)
-			self.sess = tf.Session()
+			self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 
-			get_pt.restore(self.sess, restore_p)
+			get_pt.restore(self.sess, pretrain_params_dict['save_file'])
 
 			in_v = [v for v in tf.all_variables() if v not in tf.trainable_variables()]
 			self.sess.run(tf.initialize_variables(in_v))
 
 		else:
-			self.sess = tf.Session()
+			self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 			self.sess.run(tf.initialize_all_variables())
 
 		print("Session running.")
 
-	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_file='None', val_feats=None,
-			  			val_targs=None, eta_chk_pt=3, score_pt_d=0, partial_scoring = True):
+	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_file='None',
+				eta_chk_pt=3, score_pt_d=0, partial_scoring = True):
 		'''
 		Trains network. Minimizes the mean of cross-entropy for softmax outputs otherwise squared error.
 		Args:
@@ -260,9 +276,6 @@ class Network:
 			val_data = True
 			val_d = h5py.File(val_file, 'r')
 			val_feats, val_targs = val_d['feats'][:50000], val_d['targs'][:50000]
-
-		if log_score:
-			logged_scores = []
 
 		print("Beginning training.")
 
@@ -328,10 +341,6 @@ class Network:
 			val_d.close()
 
 		print("Training duration: {0}".format(datetime.now()-tt))
-
-		if log_score:
-			return logged_scores
-
 
 	def cost_sum(self, feats, targs):
 		'''
@@ -454,7 +463,7 @@ class Network:
 			if score:
 				f.write("Shape: {0}\tFile: {1}\t 1-Dropout: {2}\t\tScores: {7} {3}\t Lambda: {4}\t Epochs: {5}\t Loaded from: {6}\n".format(self.shape, name, kp_prob, score, lam, Epochs, load, log_scores))
 
-		save_path = self.saver.save(self.sess,"trained_networks/"+name+".ckpt")
+		save_path = self.saver.save(self.sess, "trained_networks/"+name+".ckpt")
 		print("Model saved as: %s"%save_path)
 
 
@@ -470,7 +479,7 @@ class Network:
 		print("Session closed.")
 
 
-def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None', kp_prob=1, lam=0, name='params'):
+def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None', kp_prob=1, name='params'):
 	'''
 		Trains and saves a Network layer by layer. Training data is partially scored, as well as val data for each epoch.
 		Final layer is trained for only one epoch.
@@ -480,13 +489,16 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 		data_file: 	 	hdf5 file containing feature and target datasets. Features must be in dataset 'feats', targets in dataset 'targs'.
 		val_file: 		hdf5 file containing feature and target datasets. Features must be in dataset 'feats', targets in dataset 'targs'.
 		batch_size:		Size of mini-batch.
+		epochs: 		How many times to perform SGD through all layers.
+		eta: 			Learning rate.
+		kp_prob:		Fraction of neurons not to drop.
 		name:			Name of file to save the weights in.
 
 		Based on this: http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf
 		Although method not identical (optimal implementation not yet clear).
 	'''
 
-	input_layer = tf.placeholder("float", shape=[None, shape[0]])
+	input_layer = tf.placeholder("float32", shape=[None, shape[0]])
 	targets = tf.placeholder("int64", shape=[None, ])
 
 	pt_weights = []
@@ -529,9 +541,9 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 		sm_out.append(tf.matmul(pt_a_drop[i], sm_weights[i]) + sm_bias[i])  # Tensorflow takes care of softmax
 		sm_out_calc.append(tf.nn.softmax(sm_out[i]))
 		acc.append(tf.reduce_mean(tf.cast(tf.equal(tf.argmax(sm_out_calc[i], 1), targets), "float")))
-		wght_num = np.sum([f*s for f, s in zip(shape[:i+1], shape[1:i+2])])
-		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
-					lam*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
+		#wght_num = np.sum([f*s for f, s in zip(shape[:i+1], shape[1:i+2])])
+		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets)) #+
+					#lam*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
 		train_opt.append(tf.train.AdamOptimizer(eta).minimize(cost[i]))
 
 	param_dict = {}
@@ -569,3 +581,4 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 	df.close()
 	if val_file!='None':
 		vf.close()
+

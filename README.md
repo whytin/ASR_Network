@@ -1,6 +1,6 @@
 For training networks for ASR.
 
-Contains class `Network` and function `pretrain_network`.
+Contains class `Network.
 
 # Example program
 	
@@ -50,7 +50,6 @@ Variable:
 
 Possibility to split network into separate streams (that then join) is being worked on.
 
-If `pretrain_network` is used before separate using `tf.Graph().as_default()`.
 
 # pretrain_network
 
@@ -58,3 +57,25 @@ The DBN paper intimidated me so I thought maybe I could try pretrain a network u
 
 Results so far have been disappointing. Using a kaldi network of the same size and DBN pretraining achieves an 11-12% WER, I'm still trying to get past 16. I believe the underlying problem is I've got 10 hours of training data (aurora4), the linked papers have an order of magnitude more; per [3](http://research.google.com/pubs/pub38131.html) the more data you have the less pretraining matters.
 
+# hdf5 data format
+
+This only works with the data formatted correctly. The advantage is very low RAM usage.
+It's not hard to do, but to make it as simple as possible here's an example. It is assumed that the features and targets are numpy arrays in `f` and `t`.
+
+	import h5py
+
+	# This is where we want out data to end up in.
+	data_fname = '...' 
+
+	new_data_file = h5py.File(data_fname, 'w')
+	
+	# Note data must use these names.
+	new_data_file.create_dataset('feats', data=f)
+	new_data_file.create_dataset('targs', data=t)
+
+	new_data_file.close()
+
+	# That's it !
+	
+
+	

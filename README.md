@@ -18,6 +18,27 @@ Variable:
 
 Possibility to split network into separate streams (that then join) is being worked on.
 
+# Example
+
+	from NN import Network
+	
+	def main():
+	
+		data_train = '....hdf5'
+		data_val = '....hdf5'
+		pretrain_param_save_file = '...'
+	
+		NN = Network([520, 1024, 1024, 1024, 1024, 1024, 1024, 2000], pretrain=True, pretrain_params_dict={'data_train': data_train, 'data_val': data_val,									 'epochs': 50, 'batch_size': 512, 'eta': 1e-4,
+						 'kp_prob': 1.0, 'save_file': pretrain_param_save_file})
+	
+		NN.train(data_train, 20, 512, 1e-4, val_file=data_val, eta_policy='adaptive', kp_prob=0.8, score_pt_d=20)
+	
+		model_save_file = '...'
+		NN.save(model_save_file)
+	
+		NN.stop()
+	
+	main()
 
 # pretrain_network
 

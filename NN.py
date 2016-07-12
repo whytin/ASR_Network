@@ -123,7 +123,7 @@ class Network:
 			self.output = tf.matmul(self.a_drop[-1], self.weights[-1]) + self.biases[-1]
 			self.softm_output = tf.nn.softmax(self.output)
 
-	def __init__(self, shape, pretrain=False, split=False, pretrain_params_dict=None, use_fraction_gpu=1):
+	def __init__(self, shape, pretrain=False, split=False, pretrain_params_dict=None, fraction_of_gpu=1):
 		'''
 		Creates graph and starts session. Can load weights from a saved file created by the function `pretrain_network`.
 		Args:
@@ -145,7 +145,7 @@ class Network:
 			split:					Divisor with which to split network by. Ex. for network [100,1000,1000,1000,500] -> (10,10,10,1,1)
 				default - False
 
-			use_fraction_gpu: 		Use a fraction of instead of all the available GPU memory.
+			fraction_of_gpu: 		Use a fraction of instead of all the available GPU memory.
 				default - 1
 
 		'''
@@ -154,7 +154,7 @@ class Network:
 			with tf.Graph().as_default():
 				pretrain_network(shape, pretrain_params_dict['data_train'], pretrain_params_dict['epochs'],
 					 pretrain_params_dict['batch_size'], pretrain_params_dict['eta'],
-					 pretrain_params_dict['data_val'], pretrain_params_dict['kp_prob'], pretrain_params_dict['save_file'])
+					 pretrain_params_dict['data_val'], pretrain_params_dict['kp_prob'], pretrain_params_dict['save_file'], fraction_of_gpu=fraction_of_gpu)
 
 		self.shape = np.asarray(shape)
 
@@ -190,7 +190,7 @@ class Network:
 
 		self.get_acc = tf.reduce_mean(tf.cast(tf.equal( tf.argmax(self.softm_output, 1), self.targets ) ,"float"))
 
-		gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=use_fraction_gpu)
+		gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=fraction_of_gpu)
 
 		if pretrain:
 
@@ -481,7 +481,7 @@ class Network:
 		print("Session closed.")
 
 
-def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None', kp_prob=1, name='params'):
+def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None', kp_prob=1, name='params', fraction_of_gpu=1):
 	'''
 		Trains and saves a Network layer by layer. Training data is partially scored, as well as val data for each epoch.
 		Final layer is trained for only one epoch.
@@ -563,7 +563,9 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 	div_batch = int(batch_size / div)
 	num_iters = int(len(feats) / div_batch)
 
-	with tf.Session() as sess:
+	gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=fraction_of_gpu)
+
+	with tf.Session(config = tf.ConfigProto(gpu_options=gpu_options)) as sess:
 		sess.run(tf.initialize_all_variables())
 
 		for epoch in xrange(epochs):

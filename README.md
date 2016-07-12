@@ -17,7 +17,7 @@ Variable:
 
 	Constant learning rate or adaptive, dropout, L2 regularization.
 
-A lot of smaller features (as in useful functions etc.) are also there, when I have time I'll write a complete doc.
+A lot of smaller features (as in useful functions etc.) are also there.
 
 Possibility to split network into separate streams (that then join) is being worked on (was pretty much done, fallen by the wayside for the moment).
 

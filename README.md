@@ -48,7 +48,8 @@ Possibility to split network into separate streams (that then join) is being wor
 
 The DBN paper intimidated me so I thought maybe I could try pretrain a network using other methods, such as used in [1](http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf) or [2](https://papers.nips.cc/paper/3048-greedy-layer-wise-training-of-deep-networks.pdf)
 
-Results so far have been disappointing. Using a kaldi network of the same size and DBN pretraining achieves an 11-12% WER, I'm still trying to get past 16. I believe the underlying problem is I've got 10 hours of training data (aurora4), the linked papers have an order of magnitude more; per [3](http://research.google.com/pubs/pub38131.html) the more data you have the less pretraining matters (which makes sense if you think about it).
+Results so far have been disappointing. Using a kaldi network of the same size and DBN pretraining achieves an 11-12% WER, I'm still trying to get past 16. I believe the underlying problem is I've got 10 hours of training data (aurora4), the linked papers have an order of magnitude more; per [3](http://research.google.com/pubs/pub38131.html) the more data you have the less pretraining matters. Meaning it's hard for me to replicate the papers acheiving close to DBN-level results
+with discriminative pretraining.
 
 I have though 'now' (10.07.) noticed two suboptimal choices (1. method of pretraining, 2. weight init) that I had previously made. I think chances are decent that I will be able to get significantly better results.
 

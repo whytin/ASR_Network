@@ -133,12 +133,11 @@ class Network:
 				default - False
 
 			pretrain_params_dict: 	Dictionary containing: {'data_train', 'data_val', 'epochs',
-										'batch_size', 'eta', 'kp_prob', 'save_file'}
+										'batch_size', 'eta', 'kp_prob', 'lam', 'save_file'}
 									'save_file' - File to save pretrained paramaters that will
 										be loaded in.
 									If other keys unclear read the docs of the `pretrain_network`
 									or `train` function.
-
 				default - None
 
 			! Still being worked on:
@@ -153,8 +152,10 @@ class Network:
 		if pretrain:
 			with tf.Graph().as_default():
 				pretrain_network(shape, pretrain_params_dict['data_train'], pretrain_params_dict['epochs'],
-					 pretrain_params_dict['batch_size'], pretrain_params_dict['eta'],
-					 pretrain_params_dict['data_val'], pretrain_params_dict['kp_prob'], pretrain_params_dict['save_file'], fraction_of_gpu=fraction_of_gpu)
+				  pretrain_params_dict['batch_size'], pretrain_params_dict['eta'],
+				  pretrain_params_dict['data_val'], pretrain_params_dict['kp_prob'],
+				  pretrain_params_dict['save_file'], pretrain_params_dict['lam'],
+								 fraction_of_gpu=fraction_of_gpu)
 
 		self.shape = np.asarray(shape)
 
@@ -481,7 +482,7 @@ class Network:
 		print("Session closed.")
 
 
-def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None', kp_prob=1, name='params', fraction_of_gpu=1):
+def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None', kp_prob=1, lam=0, name='params', fraction_of_gpu=1):
 	'''
 		Trains and saves a Network layer by layer. Training data is partially scored, as well as val data for each epoch.
 		Final layer is trained for only one epoch.
@@ -543,9 +544,9 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 		sm_out.append(tf.matmul(pt_a_drop[i], sm_weights[i]) + sm_bias[i])  # Tensorflow takes care of softmax
 		sm_out_calc.append(tf.nn.softmax(sm_out[i]))
 		acc.append(tf.reduce_mean(tf.cast(tf.equal(tf.argmax(sm_out_calc[i], 1), targets), "float")))
-		#wght_num = np.sum([f*s for f, s in zip(shape[:i+1], shape[1:i+2])])
-		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets)) #+
-					#lam*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
+		wght_num = np.sum([f*s for f, s in zip(shape[:i+1], shape[1:i+2])])
+		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
+					lam*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
 		train_opt.append(tf.train.AdamOptimizer(eta).minimize(cost[i]))
 
 	param_dict = {}

@@ -1,37 +1,5 @@
 For training networks for ASR.
 
-Contains class `Network.
-
-# Example program
-	
-    import tensorflow as tf
-    from NN import Network, pretrain_network
-    import h5py
-
-    def main():
-         data_train_file = '...'
-         data_val_file = '...'
-
-	 shape = [440, 1024, 1024, 1024, 1024, 1024, 1024, 2000]
-	 
-	 
-	 with tf.Graph().as_default():
-	 	pretrain_network(shape, data_train_file, 10, 512, val_file=data_val_file, name='params_file')
-	 	
-	 with tf.Graph().as_default():	
-	 	
-	 	NN = Network(shape, pretrain=True, restore_p = 'params_file')
-	 	
-	 	NN.train(data_train_file, 20, 512, 1e-4, val_file = data_val_file, lmbda = 1e2, eta_policy='adaptive')
-	 	
-	 	feats_test, targs_test = get_test_data()
-	 	
-	 	print(NN.score(feats_test, targs_test))
-	 	
-	 	NN.save('trained_model')
-	 	
-	 	NN.stop()
-
 # Network
 
 This class uses Tensorflow to create a Neural Network. Trained networks can be saved and restored.
@@ -77,5 +45,9 @@ It's not hard to do, but to make it as simple as possible here's an example. It 
 
 	# That's it !
 	
+# Dependencies
 
+    Python 2.7
+
+    Tensorflow, h5py, numpy, subprocess, re, datetime
 	

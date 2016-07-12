@@ -10,7 +10,7 @@ Inside python use `help(Network)` to bring up the help text showing available fu
 
 Fixed:
 
-	Elu activation function, Adam SGD, weight init using `tf.truncated_normal(stddev=0.1)`, softmax.
+	Elu activation function, Adam SGD, weight init using `tf.truncated_normal(stddev=0.0001)` (bias=0), softmax.
 
 Variable:
 

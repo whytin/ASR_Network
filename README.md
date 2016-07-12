@@ -51,11 +51,11 @@ The DBN paper intimidated me so I thought maybe I could try pretrain a network u
 Results so far have been disappointing. Using a kaldi network of the same size and DBN pretraining achieves an 11-12% WER, I'm still trying to get past 16. I believe the underlying problem is I've got 10 hours of training data (aurora4), the linked papers have an order of magnitude more; per [3](http://research.google.com/pubs/pub38131.html) the more data you have the less pretraining matters. Meaning it's hard for me to replicate the papers acheiving close to DBN-level results
 with discriminative pretraining.
 
-I have though 'now' (10.07.) noticed two suboptimal choices (1. method of pretraining, 2. weight init) that I had previously made. I think chances are decent that I will be able to get significantly better results.
+I have though 'now' (10.07.) noticed two suboptimal choices (1. pretraining implementation, 2. weight init) that I had previously made. I think chances are decent that I will be able to get significantly better results now.
 
 # hdf5 data format
 
-Training only works with the data formatted correctly. The advantage is very low RAM usage.
+Training only works with data that is formatted correctly. The advantage is low RAM usage.
 It's not hard to do, but to make it as simple as possible here's an example. It is assumed that the features and targets are numpy arrays in `f` and `t`.
 
 	import h5py
@@ -65,7 +65,7 @@ It's not hard to do, but to make it as simple as possible here's an example. It 
 
 	new_data_file = h5py.File(data_fname, 'w')
 	
-	# Note data must use these names.
+	# Note data must use these keys/names.
 	new_data_file.create_dataset('feats', data=f)
 	new_data_file.create_dataset('targs', data=t)
 

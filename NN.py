@@ -457,7 +457,7 @@ class Network:
 					ofile.write('{0}  ]\n'.format(' '.join(str(c) for c in outs[-1])))
 
 
-	def save(self, name='NN_model', kp_prob=1, lam=0, score1=None, score2=None, Epochs='N/A', load='None'):
+	def save(self, name='NN_model', kp_prob=1, lam=0, score1=None, score2=None, Epochs='N/A', load='None', notes='None'):
 		'''
 		Saves the model (weights (vector of matrices) and bias (matrix)) to 'NN_model.ckpt' or input string.
 		'''
@@ -495,6 +495,7 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 		epochs: 		How many times to perform SGD through all layers.
 		eta: 			Learning rate.
 		kp_prob:		Fraction of neurons not to drop.
+		lam:			Regularization factor.
 		name:			Name of file to save the weights in.
 
 		Based on this: http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf

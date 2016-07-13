@@ -504,6 +504,7 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 
 	input_layer = tf.placeholder("float32", shape=[None, shape[0]])
 	targets = tf.placeholder("int64", shape=[None, ])
+	eta_ph = tf.placeholder("float")
 
 	pt_weights = []
 	pt_biases = []
@@ -548,7 +549,7 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 		wght_num = np.sum([f*s for f, s in zip(shape[:i+1], shape[1:i+2])])
 		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
 					lam*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
-		train_opt.append(tf.train.AdamOptimizer(eta).minimize(cost[i]))
+		train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i]))
 
 	param_dict = {}
 	for i in xrange(len(pt_weights)+1):
@@ -566,6 +567,7 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 	num_iters = int(len(feats) / div_batch)
 
 	gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=fraction_of_gpu)
+	last_val_score, eta_been_divided = 0, False
 
 	with tf.Session(config = tf.ConfigProto(gpu_options=gpu_options)) as sess:
 		sess.run(tf.initialize_all_variables())
@@ -574,17 +576,29 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 			for i in xrange(len(shape[1:-1])):
 				for batch_f, batch_t in batch_gen(feats, targs, div_batch, num_iters, len_feat, div):
 
-					sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t})
+					sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t, eta_ph: eta})
 
-			print("train {0}, val {1}".format(sess.run(acc[-1], feed_dict={input_layer: f_t, targets: t_t}),
-											  sess.run(acc[-1], feed_dict={input_layer: f_sc, targets: t_sc})))
+			train_score = sess.run(acc[-1], feed_dict={input_layer: f_t, targets: t_t})
+			val_score = sess.run(acc[-1], feed_dict={input_layer: f_sc, targets: t_sc})
+			print("train {0}, val {1}".format(train_score, val_score))
+
+			if val_score < last_val_score and not eta_been_divided:
+				eta /= 4
+				eta_been_divided = True
+				ct = -1
+
+			if eta_been_divided:
+				ct += 1
+				if ct == 5:
+					break
+
+			last_val_score = val_score
+
 		print
-
-
 
 		save_op.save(sess, name)
 
 	df.close()
-	if val_file!='None':
+	if val_file != 'None':
 		vf.close()
 

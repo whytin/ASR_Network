@@ -17,7 +17,9 @@ def ini_bias_var(shape, name=None):
 	return tf.Variable(initial, name=name, trainable=True)
 
 
-def batch_gen(f, t, div_bs, num_iters, len_feat, div):
+def batch_gen(f, t, bs, len_feat, div):
+	div_bs = int(bs/div)
+	num_iters = int(len(f) / div_bs)
 	batch_idx = np.random.permutation(num_iters)*div_bs
 	for i in xrange(0, len(batch_idx)-div, div):
 		bf, bt = np.zeros((div, div_bs, len_feat)), np.zeros((div, div_bs,))
@@ -123,7 +125,7 @@ class Network:
 			self.output = tf.matmul(self.a_drop[-1], self.weights[-1]) + self.biases[-1]
 			self.softm_output = tf.nn.softmax(self.output)
 
-	def __init__(self, shape, pretrain=False, split=False, pretrain_params_dict=None, fraction_of_gpu=1):
+	def __init__(self, shape, pretrain=False, split=False, pretrain_params_dict=None, fraction_of_gpu=1, restore_from_ptparam=False):
 		'''
 		Creates graph and starts session. Can load weights from a saved file created by the function `pretrain_network`.
 		Args:
@@ -149,7 +151,7 @@ class Network:
 
 		'''
 
-		if pretrain:
+		if pretrain and not restore_from_ptparam:
 			with tf.Graph().as_default():
 				pretrain_network(shape, pretrain_params_dict['data_train'], pretrain_params_dict['epochs'],
 				  pretrain_params_dict['batch_size'], pretrain_params_dict['eta'],
@@ -198,8 +200,9 @@ class Network:
 			params_dict = {}
 			for i in xrange(len(self.weights)):
 				if i == len(self.weights)-1:
-					params_dict['wl'] = self.weights[-1]
-					params_dict['bl'] = self.biases[-1]
+					pass
+					#params_dict['wl'] = self.weights[-1]
+					#params_dict['bl'] = self.biases[-1]
 				else:
 					params_dict['w'+str(i)] = self.weights[i]
 					params_dict['b'+str(i)] = self.biases[i]
@@ -211,6 +214,7 @@ class Network:
 
 			in_v = [v for v in tf.all_variables() if v not in tf.trainable_variables()]
 			self.sess.run(tf.initialize_variables(in_v))
+			self.sess.run(tf.initialize_variables([self.weights[-1], self.biases[-1]]))
 
 		else:
 			self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
@@ -277,7 +281,7 @@ class Network:
 		else:
 			val_data = True
 			val_d = h5py.File(val_file, 'r')
-			val_feats, val_targs = val_d['feats'][:50000], val_d['targs'][:50000]
+			val_feats, val_targs = val_d['feats'][550000:600000], val_d['targs'][550000:600000]
 
 		print("Beginning training.")
 
@@ -289,12 +293,10 @@ class Network:
 			original_eta = eta
 
 		div = 2
-		div_batch = int(batch_size/div)
-		num_iters = int(len(feats)/div_batch)
 
 		tt = datetime.now()
 		for epoch in xrange(epochs):
-			for batch_f, batch_t in batch_gen(feats, targs, div_batch, num_iters, len_feat, div):
+			for batch_f, batch_t in batch_gen(feats, targs, batch_size, len_feat, div):
 
 				self.sess.run(train_opt, feed_dict={self.input_layer: batch_f, self.targets: batch_t,
 														  self.eta: eta, self.kp_prob: kp_prob, self.lmbda: lmbda})
@@ -390,7 +392,7 @@ class Network:
 					mat.append([float(s) for s in line[:-2].strip().split()])
 
 
-	def output_for_kaldi(self, feats_file, SNR=None, splicing=0):
+	def output_for_kaldi(self, feats_file, f_name='network_output.txt', SNR=None, splicing=0, ct=None):
 		'''
 		Takes a txt file of the form
 
@@ -424,10 +426,17 @@ class Network:
 		len_feat = 40
 		print(len_feat)
 
-		with open('network_output.txt', 'w+') as ofile:
+		if ct != None:
+			ct_utt = True
+			ct_idx = 0
+
+		with open(f_name, 'w+') as ofile:
 			if splicing != 0:
 				zeropad = np.zeros((splicing, len_feat))
 				for k, v in self.feats_extractor(dt_file):
+					if ct_utt:
+						if ct_idx==ct:
+							break
 					utt_feats = np.concatenate((np.concatenate((zeropad, np.asarray(v))), zeropad))
 					utt_len = len(utt_feats)
 					f_mat = np.zeros((utt_len - 2 * splicing, len_feat * (2 * splicing + 1)), dtype=np.float32)
@@ -446,6 +455,7 @@ class Network:
 					for out in outs[:-1]:
 						ofile.write('{0}\n'.format(' '.join(str(c) for c in out)))
 					ofile.write('{0}  ]\n'.format(' '.join(str(c) for c in outs[-1])))
+					ct_idx += 1
 			else:
 				for k, v in self.feats_extractor(dt_file):
 					ofile.write('{0}  [\n'.format(k))
@@ -503,29 +513,25 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 	'''
 
 	input_layer = tf.placeholder("float32", shape=[None, shape[0]])
-	targets = tf.placeholder("int64", shape=[None, ])
+
 	eta_ph = tf.placeholder("float")
 
 	pt_weights = []
 	pt_biases = []
 	pt_a = []
 	pt_a_drop = []
-	sm_out = []
-	sm_out_calc = []
 	cost = []
 	train_opt = []
-	acc = []
+
 
 	df = h5py.File(data_file, 'r')
 	feats, targs = df['feats'], df['targs']
 	f_t, t_t = feats[:50000], targs[:50000]
-	if val_file != 'None':
-		vf = h5py.File(val_file, 'r')
-		f_sc, t_sc = vf['feats'][:50000], vf['targs'][:50000]
+
 	len_feat = len(f_t[0])
 
-	sm_weights = []
-	sm_bias = []
+	out_bias = []
+	tmp_out = []
 
 	for i, len_layer in enumerate(shape[1:-1]):
 		pt_weights.append(ini_weight_var([shape[i], len_layer], 'w' + str(i)))
@@ -537,25 +543,27 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 			pt_a.append(tf.nn.elu(tf.matmul(pt_a_drop[i - 1], pt_weights[i]) + pt_biases[i]))
 			pt_a_drop.append(tf.nn.dropout(pt_a[i], kp_prob))
 
-		if len_layer == shape[-2]:
-			sm_weights.append(ini_weight_var([len_layer, shape[-1]], name='wl'))
-			sm_bias.append(ini_bias_var([shape[-1]], name='bl'))
-		else:
-			sm_weights.append(ini_weight_var([len_layer, shape[-1]]))
-			sm_bias.append(ini_bias_var([shape[-1]]))
-		sm_out.append(tf.matmul(pt_a_drop[i], sm_weights[i]) + sm_bias[i])  # Tensorflow takes care of softmax
-		sm_out_calc.append(tf.nn.softmax(sm_out[i]))
-		acc.append(tf.reduce_mean(tf.cast(tf.equal(tf.argmax(sm_out_calc[i], 1), targets), "float")))
+		out_bias.append(ini_weight_var([shape[i]]))
+		tmp_out.append(tf.nn.elu(tf.matmul(pt_a_drop[i], tf.transpose(pt_weights[i])) + out_bias[i]))
+
 		wght_num = np.sum([f*s for f, s in zip(shape[:i+1], shape[1:i+2])])
-		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
+
+		if i == 0:
+			cost.append(tf.reduce_mean(tf.reduce_sum(tf.square(tmp_out[i] - input_layer), reduction_indices=1)) +
 					lam*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
-		train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i]))
+		else:
+			cost.append(tf.reduce_mean(tf.reduce_sum(tf.square(tmp_out[i] - pt_a_drop[i-1]), reduction_indices=1)) +
+					lam * tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i + 1]]) / wght_num)
+
+		train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i], var_list=[out_bias[i], pt_weights[i], pt_biases[i]]))
+		#train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i]))
 
 	param_dict = {}
 	for i in xrange(len(pt_weights)+1):
 		if i == len(pt_weights):
-			param_dict['wl'] = sm_weights[-1]
-			param_dict['bl'] = sm_bias[-1]
+			pass
+			#param_dict['wl'] = sm_weights[-1]
+			#param_dict['bl'] = sm_bias[-1]
 		else:
 			param_dict['w'+str(i)] = pt_weights[i]
 			param_dict['b'+str(i)] = pt_biases[i]
@@ -563,42 +571,27 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 	save_op = tf.train.Saver(param_dict)
 
 	div = 2
-	div_batch = int(batch_size / div)
-	num_iters = int(len(feats) / div_batch)
 
 	gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=fraction_of_gpu)
-	last_val_score, eta_been_divided = 0, False
+
+	tt = datetime.now()
 
 	with tf.Session(config = tf.ConfigProto(gpu_options=gpu_options)) as sess:
 		sess.run(tf.initialize_all_variables())
 
-		for epoch in xrange(epochs):
-			for i in xrange(len(shape[1:-1])):
-				for batch_f, batch_t in batch_gen(feats, targs, div_batch, num_iters, len_feat, div):
-
-					sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t, eta_ph: eta})
-
-			train_score = sess.run(acc[-1], feed_dict={input_layer: f_t, targets: t_t})
-			val_score = sess.run(acc[-1], feed_dict={input_layer: f_sc, targets: t_sc})
-			print("train {0}, val {1}".format(train_score, val_score))
-
-			if val_score < last_val_score and not eta_been_divided:
-				eta /= 4
-				eta_been_divided = True
-				ct = -1
-
-			if eta_been_divided:
-				ct += 1
-				if ct == 5:
-					break
-
-			last_val_score = val_score
-
+		for i in xrange(len(shape[1:-1])):
+			for epoch in xrange(epochs):
+				for batch_f, batch_t in batch_gen(feats, targs, batch_size, len_feat, div):
+					sess.run(train_opt[i], feed_dict={input_layer: batch_f, eta_ph: eta})
+				print sess.run(cost[i], feed_dict={input_layer: batch_f, eta_ph: eta})
+			print
 		print
 
 		save_op.save(sess, name)
 
+	print datetime.now() - tt
+
 	df.close()
-	if val_file != 'None':
-		vf.close()
+
+
 

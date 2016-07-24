@@ -172,19 +172,18 @@ class Network:
 
 		# Regularization.
 		if not split:
-			self.param_sum = tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in self.weights]) #+ tf.add_n([tf.nn.l2_loss(b_v) for b_v in self.biases])
-			self.param_num = np.sum([f*s for f, s in zip(self.shape[:-1], self.shape[1:])]) #+ np.sum(self.shape[1:])
+			entropy_w = []
+			for w_mat in self.weights:
+				abs_v = tf.abs(w_mat)
+				norm_w_mat = tf.transpose(tf.div(tf.transpose(abs_v), tf.reduce_sum(abs_v, reduction_indices=1)))
+				entropy_w.append(tf.reduce_mean(tf.mul(norm_w_mat, -tf.log(norm_w_mat + 1e-20))))
+			self.entropy_sum = tf.inv(tf.add_n(entropy_w))
 		else:
-			jnd_idx = split.index(1)
-
-			self.param_sum = tf.add_n([tf.nn.l2_loss(self.weights[idx])+tf.nn.l2_loss(self.biases[idx])
-																for idx in xrange(jnd_idx, len(split)-1)])
-			self.param_num = np.sum([f*s for f, s in zip(self.shape[jnd_idx:-1], self.shape[jnd_idx:])]) + np.sum(self.shape[jnd_idx:])
+			pass
 
 		# Cross entropy function (1: Individual cross entropy error, 2: Total cross entropy with reg.).
-		self.error = tf.nn.sparse_softmax_cross_entropy_with_logits(self.output, self.targets)
-		self.cost_f = tf.reduce_sum(self.error) + self.lmbda*tf.div(self.param_sum, self.param_num)
-		self.cost_m = tf.reduce_mean(self.error) + self.lmbda*tf.div(self.param_sum, self.param_num)
+		self.error = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(self.output, self.targets))
+		self.cost_m = self.error + self.lmbda * self.entropy_sum
 
 		# Adam SGD.
 		self.train_adam = tf.train.AdamOptimizer(self.eta).minimize(self.cost_m)
@@ -346,19 +345,12 @@ class Network:
 
 		print("Training duration: {0}".format(datetime.now()-tt))
 
-	def cost_sum(self, feats, targs):
-		'''
-		Input: Feature vectors and their targets. Returns sum of the cost function outputs.
-		'''
-		return self.sess.run(self.cost_f, feed_dict = {self.input_layer:feats,
-								self.targets:targs,self.kp_prob:1,self.lmbda:0})
-
 	def cost_mean(self, feats, targs):
 		'''
 		Input: Feature vectors and their targets. Returns mean of the cost function outputs
 		'''
-		return np.mean(self.sess.run(self.error, feed_dict = {self.input_layer:feats,
-								self.targets:targs,self.kp_prob:1,self.lmbda:0}))
+		return self.sess.run(self.error, feed_dict = {self.input_layer: feats,
+								self.targets: targs, self.kp_prob: 1.0})
 
 	def score(self, feats, targs):
 		'''
@@ -477,7 +469,7 @@ class Network:
 						name, score1, score2, kp_prob, lam, Epochs, load, notes))
 
 		save_path = self.saver.save(self.sess, "trained_networks/"+name+".ckpt")
-		print("Model saved as: %s"%save_path)
+		print("Model saved as: %s" % save_path)
 
 
 	def load(self, n):
@@ -513,50 +505,65 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 	'''
 
 	input_layer = tf.placeholder("float32", shape=[None, shape[0]])
-
+	targets = tf.placeholder("int64", shape=[None, ])
 	eta_ph = tf.placeholder("float")
+	lmbda = tf.placeholder("float")
 
 	pt_weights = []
 	pt_biases = []
 	pt_a = []
 	pt_a_drop = []
+	sm_out = []
+	sm_out_calc = []
 	cost = []
 	train_opt = []
+	acc = []
 
+	act_func = tf.nn.elu
 
 	df = h5py.File(data_file, 'r')
 	feats, targs = df['feats'], df['targs']
 	f_t, t_t = feats[:50000], targs[:50000]
-
+	if val_file != 'None':
+		vf = h5py.File(val_file, 'r')
+		f_sc, t_sc = vf['feats'][:50000], vf['targs'][:50000]
 	len_feat = len(f_t[0])
 
-	out_bias = []
-	tmp_out = []
+	sm_weights = []
+	sm_bias = []
+	entropy_w = []
+	entropy_w_per_layer = []
 
 	for i, len_layer in enumerate(shape[1:-1]):
 		pt_weights.append(ini_weight_var([shape[i], len_layer], 'w' + str(i)))
 		pt_biases.append(ini_bias_var([len_layer], 'b' + str(i)))
 		if i == 0:
-			pt_a.append(tf.nn.elu(tf.matmul(input_layer, pt_weights[i]) + pt_biases[i]))
+			pt_a.append(act_func(tf.matmul(input_layer, pt_weights[i]) + pt_biases[i]))
 			pt_a_drop.append(tf.nn.dropout(pt_a[i], kp_prob))
 		else:
-			pt_a.append(tf.nn.elu(tf.matmul(pt_a_drop[i - 1], pt_weights[i]) + pt_biases[i]))
+			pt_a.append(act_func(tf.matmul(pt_a_drop[i - 1], pt_weights[i]) + pt_biases[i]))
 			pt_a_drop.append(tf.nn.dropout(pt_a[i], kp_prob))
 
-		out_bias.append(ini_weight_var([shape[i]]))
-		tmp_out.append(tf.nn.elu(tf.matmul(pt_a_drop[i], tf.transpose(pt_weights[i])) + out_bias[i]))
-
-		wght_num = np.sum([f*s for f, s in zip(shape[:i+1], shape[1:i+2])])
-
-		if i == 0:
-			cost.append(tf.reduce_mean(tf.reduce_sum(tf.square(tmp_out[i] - input_layer), reduction_indices=1)) +
-					lam*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
+		if len_layer == shape[-2]:
+			sm_weights.append(ini_weight_var([len_layer, shape[-1]], name='wl'))
+			sm_bias.append(ini_bias_var([shape[-1]], name='bl'))
 		else:
-			cost.append(tf.reduce_mean(tf.reduce_sum(tf.square(tmp_out[i] - pt_a_drop[i-1]), reduction_indices=1)) +
-					lam * tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i + 1]]) / wght_num)
+			sm_weights.append(ini_weight_var([len_layer, shape[-1]]))
+			sm_bias.append(ini_bias_var([shape[-1]]))
+		sm_out.append(tf.matmul(pt_a_drop[i], sm_weights[i]) + sm_bias[i])  # Tensorflow takes care of softmax
+		sm_out_calc.append(tf.nn.softmax(sm_out[i]))
+		acc.append(tf.reduce_mean(tf.cast(tf.equal(tf.argmax(sm_out_calc[i], 1), targets), "float")))
 
-		train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i], var_list=[out_bias[i], pt_weights[i], pt_biases[i]]))
-		#train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i]))
+		abs_v = tf.abs(pt_weights[i])
+		norm_w_mat = tf.transpose(tf.div(tf.transpose(abs_v), tf.reduce_sum(abs_v, reduction_indices=1)))
+		entropy_w.append(tf.reduce_mean(tf.mul(norm_w_mat, -tf.log(norm_w_mat + 1e-20))))
+		entropy_w_per_layer.append(tf.inv(tf.add_n(entropy_w[:(i+1)])))
+
+		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
+					lmbda * entropy_w_per_layer[i])
+		#cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
+		#			lmbda*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
+		train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i]))
 
 	param_dict = {}
 	for i in xrange(len(pt_weights)+1):
@@ -571,27 +578,43 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 	save_op = tf.train.Saver(param_dict)
 
 	div = 2
-
 	gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=fraction_of_gpu)
-
-	tt = datetime.now()
 
 	with tf.Session(config = tf.ConfigProto(gpu_options=gpu_options)) as sess:
 		sess.run(tf.initialize_all_variables())
 
+		print "Beginning pretraining."
+
 		for i in xrange(len(shape[1:-1])):
-			for epoch in xrange(epochs):
+			eta_var, last_val_score = eta, [0]
+
+			if i == len(shape[1:-1])-1:
+				epochs = 5
+
+			for epoch in range(epochs):
 				for batch_f, batch_t in batch_gen(feats, targs, batch_size, len_feat, div):
-					sess.run(train_opt[i], feed_dict={input_layer: batch_f, eta_ph: eta})
-				print sess.run(cost[i], feed_dict={input_layer: batch_f, eta_ph: eta})
+					sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t, eta_ph: eta_var, lmbda: lam})
+
+				train_score = sess.run(acc[i], feed_dict={input_layer: f_t, targets: t_t})
+				val_score = sess.run(acc[i], feed_dict={input_layer: f_sc, targets: t_sc})
+				print("train {0}, val {1}".format(train_score, val_score))
+
+				if kp_prob == 1:
+					if val_score < last_val_score[-1]:
+						break
+				else:
+					if val_score < np.min(last_val_score[-3:]):
+						break
+
+				last_val_score.append(val_score)
+
 			print
-		print
 
 		save_op.save(sess, name)
 
-	print datetime.now() - tt
-
 	df.close()
+	if val_file!='None':
+		vf.close()
 
 
 

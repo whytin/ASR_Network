@@ -50,7 +50,7 @@ a more even distribution). Results so far are promising.
 
 ## pretrain_network
 
-The DBN paper intimidated me so I thought maybe I could try pretrain a network using other methods, such as used in [1](http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf) or [2](https://papers.nips.cc/paper/3048-greedy-layer-wise-training-of-deep-networks.pdf)
+Tried to understand RBMs, didn't, don't like using stuff I wouldn't understand, so I thought maybe I could try pretrain a network using other methods, such as used in [1](http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf) or [2](https://papers.nips.cc/paper/3048-greedy-layer-wise-training-of-deep-networks.pdf)
 
 Results so far have been disappointing. Using a kaldi network of the same size and DBN pretraining achieves an 11-12% WER, I'm still trying to get past 16. I believe the underlying problem is I've got 10 hours of training data (aurora4), the linked papers have an order of magnitude more; per [3](http://research.google.com/pubs/pub38131.html) the more data you have the less pretraining matters. Meaning it's hard for me to replicate the papers acheiving close to DBN-level results
 with discriminative pretraining.

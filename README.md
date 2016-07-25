@@ -25,7 +25,7 @@ Possibility to split network into separate streams (that then join) is being wor
 by row (contains connections from one unit in the previous layer to all in the next), the entropy is calculated for all weight matrices, summed up and inverted (so less implies
 a more even distribution). Results so far are promising.
 
-# Example
+## Example
 
 	from NN import Network
 	
@@ -40,14 +40,15 @@ a more even distribution). Results so far are promising.
 	NN = Network([520, 1024, 1024, 1024, 1024, 1024, 1024, 2000], pretrain=True,
 					pretrain_params_dict=pretrain_params_dict, fraction_of_gpu=0.5)
 
-	NN.train(data_train, 20, 1024, 1e-4, val_file=data_val, lam=0.1, kp_prob=0.8, score_pt_d=20)
+	# Training cost, score and validation score output every epoch.
+	NN.train(data_train, 20, 1024, 1e-4, val_file=data_val, lam=0.1, kp_prob=0.8)
 
 	model_save_file = '...'
 	NN.save(model_save_file)
 
 	NN.stop()
 
-# pretrain_network
+## pretrain_network
 
 The DBN paper intimidated me so I thought maybe I could try pretrain a network using other methods, such as used in [1](http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf) or [2](https://papers.nips.cc/paper/3048-greedy-layer-wise-training-of-deep-networks.pdf)
 
@@ -56,7 +57,7 @@ with discriminative pretraining.
 
 Currently trying out weight entropy regularization with discriminative pretraining.
 
-# hdf5 data format
+## hdf5 data format
 
 Training only works with data that is formatted correctly. The advantage is low RAM usage.
 It's not hard to do, but to make it as simple as possible here's an example. It is assumed that the features and targets are numpy arrays in `f` and `t`.
@@ -76,7 +77,7 @@ It's not hard to do, but to make it as simple as possible here's an example. It 
 
 	# That's it !
 	
-# Dependencies
+## Dependencies
 
     Python 2.7
 

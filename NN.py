@@ -222,7 +222,7 @@ class Network:
 		print("Session running.")
 
 	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lam=0, val_file='None',
-				eta_chk_pt=3, score_pt_d=0, partial_scoring = True):
+				eta_chk_pt=3, partial_scoring = True):
 		'''
 		Trains network. Minimizes the mean of cross-entropy for softmax outputs otherwise squared error.
 		Args:
@@ -247,9 +247,6 @@ class Network:
 			eta_chk_pt:		Number of epochs at which to check cost to decrease or keep constant the learning rate.
 				default - 3
 
-			score_pt_d: 	Number of times to display accuracy/error.
-				default - 10
-
 			partial_scoring: Takes 50 000 samples from the training set and uses them for scoring/error evaluation. If
 							set to `False`, the entire set will be used.
 				default - True
@@ -270,10 +267,8 @@ class Network:
 			sc_f, sc_t = feats, targs
 			len_feat = len(sc_f[0])
 
-		if score_pt_d == 0:
-			score_pt = int(epochs/10)
-		else:
-			score_pt = int(epochs/score_pt_d)
+		# Score every epoch.
+		score_pt = 1
 
 		if val_file == 'None':
 			val_data = False

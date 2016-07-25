@@ -33,14 +33,14 @@ a more even distribution). Results so far are promising.
 	data_val = '....hdf5'
 	pretrain_param_save_file = '...'
 	pretrain_params_dict = {'data_train': data_train, 'data_val': data_val,		
-				'epochs': 30,  		  'batch_size': 512,  
+				'epochs': 20,  		  'batch_size': 1024,  
 				'eta': 1e-4,		  'kp_prob': 0.8, 
-				'lam': 0, 	'save_file': pretrain_param_save_file}
+				'lam': 0.1, 	'save_file': pretrain_param_save_file}
 
 	NN = Network([520, 1024, 1024, 1024, 1024, 1024, 1024, 2000], pretrain=True,
-					pretrain_params_dict=pretrain_params_dict)
+					pretrain_params_dict=pretrain_params_dict, fraction_of_gpu=0.5)
 
-	NN.train(data_train, 20, 512, 1e-4, val_file=data_val, eta_policy='adaptive', 
+	NN.train(data_train, 20, 1024, 1e-4, val_file=data_val, eta_policy='adaptive', lam=0.1,
 							kp_prob=0.8, score_pt_d=20)
 
 	model_save_file = '...'

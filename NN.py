@@ -165,7 +165,7 @@ class Network:
 		self.eta = tf.placeholder("float")
 		self.input_layer = tf.placeholder("float",shape=[None,self.shape[0]])
 		self.kp_prob = tf.placeholder("float")
-		self.lmbda = tf.placeholder("float")
+		self.lam = tf.placeholder("float")
 		self.targets = tf.placeholder("int64", shape=[None,])
 
 		self.init_layers(split)
@@ -183,7 +183,7 @@ class Network:
 
 		# Cross entropy function (1: Individual cross entropy error, 2: Total cross entropy with reg.).
 		self.error = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(self.output, self.targets))
-		self.cost_m = self.error + self.lmbda * self.entropy_sum
+		self.cost_m = self.error + self.lam * self.entropy_sum
 
 		# Adam SGD.
 		self.train_adam = tf.train.AdamOptimizer(self.eta).minimize(self.cost_m)
@@ -221,7 +221,7 @@ class Network:
 
 		print("Session running.")
 
-	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lmbda=0, val_file='None',
+	def train(self, data_file, epochs, batch_size, eta, kp_prob=1, eta_policy='const', lam=0, val_file='None',
 				eta_chk_pt=3, score_pt_d=0, partial_scoring = True):
 		'''
 		Trains network. Minimizes the mean of cross-entropy for softmax outputs otherwise squared error.
@@ -234,11 +234,11 @@ class Network:
 			kp_prob:		Proportion of neurons that should not be dropped (kept).
 				default	- 1
 
-			adapt_eta:		'const' -> constant learning rate
+			eta_policy:		'const' -> constant learning rate
 							'adaptive' -> adaptive learning rate (/2 if cost function not decreased after 3e3 epochs)
 				default - 'const'
 
-			lmbda:			Regularization multiplier.
+			lam:			Regularization multiplier.
 				default - 0
 
 			val_file: 	 	hdf5 file containing feature and target datasets. Features must be in dataset 'feats', targets in dataset 'targs'.
@@ -298,7 +298,7 @@ class Network:
 			for batch_f, batch_t in batch_gen(feats, targs, batch_size, len_feat, div):
 
 				self.sess.run(train_opt, feed_dict={self.input_layer: batch_f, self.targets: batch_t,
-														  self.eta: eta, self.kp_prob: kp_prob, self.lmbda: lmbda})
+														  self.eta: eta, self.kp_prob: kp_prob, self.lam: lam})
 
 			if eta_policy == 'const':
 				if epoch%score_pt == 0:
@@ -308,13 +308,13 @@ class Network:
 						print("Training score {0}, training error {1}".format(self.score(sc_f, sc_t), self.cost_mean(sc_f, sc_t)))
 
 			elif eta_policy == 'adaptive':
-				if epoch%eta_chk_pt == 0:
+				if epoch % eta_chk_pt == 0:
 					new_cost = self.cost_mean(feats, targs)
 					print("Training error {0}".format(new_cost))
 					if new_cost > last_cost:
 						eta /= 2
 					last_cost = new_cost
-				if epoch%score_pt:
+				if epoch % score_pt:
 					if val_data:
 						print("Training score {0}, Val score {1}".format(self.score(sc_f, sc_t), self.score(val_feats, val_targs)))
 					else:
@@ -357,7 +357,7 @@ class Network:
 		Input: Feature vectors and their targets. Returns proportion of outputs that fit targets.
 		'''
 		return self.sess.run(self.get_acc, feed_dict = {self.input_layer:feats,
-							self.targets:targs,self.kp_prob:1,self.lmbda:0})
+							self.targets:targs,self.kp_prob:1,self.lam:0})
 
 	def forward_pass(self, inp, apply_log=False):
 		'''
@@ -508,7 +508,7 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 	input_layer = tf.placeholder("float32", shape=[None, shape[0]])
 	targets = tf.placeholder("int64", shape=[None, ])
 	eta_ph = tf.placeholder("float")
-	lmbda = tf.placeholder("float")
+	lamb = tf.placeholder("float")
 
 	pt_weights = []
 	pt_biases = []
@@ -561,7 +561,7 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 		entropy_w_per_layer.append(tf.inv(tf.add_n(entropy_w[:(i+1)])))
 
 		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
-					lmbda * entropy_w_per_layer[i])
+					lamb * entropy_w_per_layer[i])
 		train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i]))
 
 	param_dict = {}
@@ -590,7 +590,7 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 
 			for epoch in range(epochs):
 				for batch_f, batch_t in batch_gen(feats, targs, batch_size, len_feat, div):
-					sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t, eta_ph: eta_var, lmbda: lam})
+					sess.run(train_opt[i], feed_dict={input_layer: batch_f, targets: batch_t, eta_ph: eta_var, lamb: lam})
 
 				train_score = sess.run(acc[i], feed_dict={input_layer: f_t, targets: t_t})
 				val_score = sess.run(acc[i], feed_dict={input_layer: f_sc, targets: t_sc})

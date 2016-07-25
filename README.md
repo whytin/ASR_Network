@@ -15,11 +15,15 @@ Fixed:
 
 Variable:
 
-	Constant learning rate or adaptive, dropout, L2 regularization.
+	Constant learning rate or adaptive, dropout, weight entropy regularization*.
 
 A lot of smaller features (as in useful functions etc.) are also there.
 
 Possibility to split network into separate streams (that then join) is being worked on (was pretty much done, fallen by the wayside for the moment).
+
+*Rather than constrain the weights merely by size (like with L2 reg.), this implementation has a weight entropy term added to its cost function. The weights are normed
+by row (contains connections from one unit in the previous layer to all in the next), the entropy is calculated for all weight matrices, summed up and inverted (so less implies
+a more even distribution). Results so far are promising.
 
 # Example
 
@@ -51,7 +55,7 @@ The DBN paper intimidated me so I thought maybe I could try pretrain a network u
 Results so far have been disappointing. Using a kaldi network of the same size and DBN pretraining achieves an 11-12% WER, I'm still trying to get past 16. I believe the underlying problem is I've got 10 hours of training data (aurora4), the linked papers have an order of magnitude more; per [3](http://research.google.com/pubs/pub38131.html) the more data you have the less pretraining matters. Meaning it's hard for me to replicate the papers acheiving close to DBN-level results
 with discriminative pretraining.
 
-Currently has stacked autoencoders implemented for pretraining. Trying to get that to work. 
+Currently trying out weight entropy regularization with discriminative pretraining.
 
 # hdf5 data format
 

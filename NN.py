@@ -487,7 +487,7 @@ class Network:
 def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None', kp_prob=1, lam=0, name='params', fraction_of_gpu=1):
 	'''
 		Trains and saves a Network layer by layer. Training data is partially scored, as well as val data for each epoch.
-		Final layer is trained for only one epoch.
+		Final layer is trained for only five epochs.
 
 	Args:
 		shape:			List of layer sizes. Example: [39,512,512,40]
@@ -501,7 +501,8 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 		name:			Name of file to save the weights in.
 
 		Based on this: http://research.microsoft.com/pubs/157341/FeatureEngineeringInCD-DNN-ASRU2011-pub.pdf
-		Although method not identical (optimal implementation not yet clear).
+		Although method not identical (optimal implementation not yet clear). At the moment entropy regularization for
+		the weights is used. Promising performance so far.
 	'''
 
 	input_layer = tf.placeholder("float32", shape=[None, shape[0]])
@@ -561,16 +562,12 @@ def pretrain_network(shape, data_file, epochs, batch_size, eta, val_file='None',
 
 		cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
 					lmbda * entropy_w_per_layer[i])
-		#cost.append(tf.nn.sparse_softmax_cross_entropy_with_logits(sm_out[i], targets) +
-		#			lmbda*tf.add_n([tf.nn.l2_loss(w_mat) for w_mat in pt_weights[:i+1]])/wght_num)
 		train_opt.append(tf.train.AdamOptimizer(eta_ph).minimize(cost[i]))
 
 	param_dict = {}
 	for i in xrange(len(pt_weights)+1):
 		if i == len(pt_weights):
 			pass
-			#param_dict['wl'] = sm_weights[-1]
-			#param_dict['bl'] = sm_bias[-1]
 		else:
 			param_dict['w'+str(i)] = pt_weights[i]
 			param_dict['b'+str(i)] = pt_biases[i]

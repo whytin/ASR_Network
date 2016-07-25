@@ -40,8 +40,7 @@ a more even distribution). Results so far are promising.
 	NN = Network([520, 1024, 1024, 1024, 1024, 1024, 1024, 2000], pretrain=True,
 					pretrain_params_dict=pretrain_params_dict, fraction_of_gpu=0.5)
 
-	NN.train(data_train, 20, 1024, 1e-4, val_file=data_val, eta_policy='adaptive', lam=0.1,
-							kp_prob=0.8, score_pt_d=20)
+	NN.train(data_train, 20, 1024, 1e-4, val_file=data_val, lam=0.1, kp_prob=0.8, score_pt_d=20)
 
 	model_save_file = '...'
 	NN.save(model_save_file)

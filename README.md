@@ -55,7 +55,6 @@ Tried to understand RBMs, didn't, don't like using stuff I don't understand, so 
 Results so far have been disappointing. Using a kaldi network of the same size and DBN pretraining achieves an 11-12% WER, I'm still trying to get past 16. I believe the underlying problem is I've got 10 hours of training data (aurora4), the linked papers have an order of magnitude more; per [3](http://research.google.com/pubs/pub38131.html) the more data you have the less pretraining matters. Meaning it's hard for me to replicate the papers acheiving close to DBN-level results
 with discriminative pretraining.
 
-Currently trying out weight entropy regularization with discriminative pretraining.
 
 ## hdf5 data format
 

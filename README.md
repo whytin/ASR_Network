@@ -15,15 +15,11 @@ Fixed:
 
 Variable:
 
-	Constant learning rate or adaptive, dropout, weight entropy regularization*.
+	Constant learning rate or adaptive, dropout, L2 regularization.
 
 A lot of smaller features (as in useful functions etc.) are also there.
 
 Possibility to split network into separate streams (that then join) is being worked on (was pretty much done, fallen by the wayside for the moment).
-
-*Rather than constrain the weights merely by size (like with L2 reg.), this implementation has a weight entropy term added to its cost function. The weights are normed
-by row (contains connections from one unit in the previous layer to all in the next), the entropy is calculated for all weight matrices, summed up and inverted (so less implies
-a more even distribution). Results so far are promising.
 
 ## Example
 
